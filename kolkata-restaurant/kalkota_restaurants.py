@@ -16,7 +16,8 @@ import random
 import numpy as np
 import sys
 
-
+from utils import *
+import iaplayer as ia
 
     
 # ---- ---- ---- ---- ---- ----
@@ -32,7 +33,7 @@ def init(_boardname=None):
     game = Game('Cartes/' + name + '.json', SpriteBuilder)
     game.O = Ontology(True, 'SpriteSheet-32x32/tiny_spritesheet_ontology.csv')
     game.populate_sprite_names(game.O)
-    game.fps = 5  # frames per second
+    game.fps = 60 # frames per second
     game.mainiteration()
     game.mask.allow_overlaping_players = True
     #player = game.player
@@ -40,7 +41,7 @@ def init(_boardname=None):
 def main():
 
     #for arg in sys.argv:
-    iterations = 20 # default
+    iterations = 100 # default
     if len(sys.argv) == 2:
         iterations = int(sys.argv[1])
     print ("Iterations: ")
@@ -74,6 +75,8 @@ def main():
     goalStates = [o.get_rowcol() for o in game.layers['ramassable']]
     print ("Goal states:", goalStates)
     nbRestaus = len(goalStates)
+    # on donne le gain par restaurant
+    restaurantGain = [1] * nbRestaus
         
     # on localise tous les murs
     wallStates = [w.get_rowcol() for w in game.layers['obstacle']]
@@ -82,73 +85,63 @@ def main():
     # on liste toutes les positions permises
     allowedStates = [(x,y) for x in range(nbLignes) for y in range(nbColonnes)\
                      if (x,y) not in wallStates or  goalStates] 
-    
+    #-------------------------------
+    #initialisation de Board et des Agents
+    #-------------------------------
+    restaurantBoard = RestaurantBoard(initStates, goalStates, wallStates, nbLignes, nbColonnes, restaurantGain)
+    iaplayers = []
+
+    #-------------------------------
+    # initialisation du seed
+    #-------------------------------
+    rd.seed(42)
     #-------------------------------
     # Placement aleatoire des joueurs, en évitant les obstacles
     #-------------------------------
         
     posPlayers = initStates
-
     
     for j in range(nbPlayers):
+        # La nouvelle position
         x,y = random.choice(allowedStates)
-        players[j].set_rowcol(x,y)
+        #Creation des agents : A* RandomChooser, 
+        iaplayers.append(ia.AStarPlayer((x,y), j, restaurantBoard))
+        # mise a jour de leur position
+        players[j].set_rowcol(x, y)
+        restaurantBoard.playerStates[j] = (x,y)
         game.mainiteration()
-        posPlayers[j]=(x,y)
 
-
-        
-        
-    
-    #-------------------------------
-    # chaque joueur choisit un restaurant
-    #-------------------------------
-
-    restau=[0]*nbPlayers
-    for j in range(nbPlayers):
-        c = random.randint(0,nbRestaus-1)
-        print(c)
-        restau[j]=c
-    
     #-------------------------------
     # Boucle principale de déplacements 
     #-------------------------------
     
-        
-    # bon ici on fait juste plusieurs random walker pour exemple...
-    
     for i in range(iterations):
-        
+        print(i, ":")
         for j in range(nbPlayers): # on fait bouger chaque joueur séquentiellement
             row,col = posPlayers[j]
-
-            x_inc,y_inc = random.choice([(0,1),(0,-1),(1,0),(-1,0)])
-            next_row = row+x_inc
-            next_col = col+y_inc
+            next_row,next_col = iaplayers[j].nextMove()
+            
             # and ((next_row,next_col) not in posPlayers)
-            if ((next_row,next_col) not in wallStates) and next_row>=0 and next_row<=19 and next_col>=0 and next_col<=19:
-                players[j].set_rowcol(next_row,next_col)
-                print ("pos :", j, next_row,next_col)
+            if restaurantBoard.isAccessible((next_row, next_col)):
+                movePlayer(iaplayers[j],players[j],(next_row,next_col))
+                print ("\tpos :", j, next_row,next_col)
                 game.mainiteration()
-    
                 col=next_col
                 row=next_row
-                posPlayers[j]=(row,col)
             
-      
-        
-            
-            # si on est à l'emplacement d'un restaurant, on s'arrête
-            if (row,col) == restau[j]:
+            # si tout le monde est à l'emplacement d'un restaurant
+            if restaurantBoard.isEveryBodyArrived():
+                #donne les gain aux joueurs
+                restaurantBoard.giveGain(iaplayers)
                 #o = players[j].ramasse(game.layers)
                 game.mainiteration()
-                print ("Le joueur ", j, " est à son restaurant.")
+                print ("\tLes joueur sont à leur restaurant.")
+                print ("\tA TABLE !")
                # goalStates.remove((row,col)) # on enlève ce goalState de la liste
-                
-                
                 break
             
-    
+    for j in range(nbPlayers):
+        print("%d score du joueur %s: %d"%(j, iaplayers[j].toString(), iaplayers[j].score))
     pygame.quit()
     
         
