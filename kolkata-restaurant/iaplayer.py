@@ -8,7 +8,7 @@ inputs = {'w':(-1,0), 'z':(-1,0), 'up':(-1,0)
           , 'd':(0,1), 'right':(0,1)}
 inputPattern = "\tw\n\t^\n\t|\n  a < --.-- > d\n\t|\n\tˇ\n\ts"
 
-class Player():
+class Player(IObserver):
     """
     Class Player
     """
@@ -28,12 +28,17 @@ class Player():
         self.goal = None
         # flag qui indique si le score a change
         self.change = False
+        # flag qui indique si il a ete servi
+        self.served = False
         # son ID parni les autres joueur
         self.id = Player.number + 1
         # integer static a la classe
         Player.number += 1
         # strategy a apppliquer
         self.strategy = strategy
+        # frequentation par restaurant
+        self.precFreq = []
+        self.freq = []
         
     def process(self):
         """applique recherche de chemin, selection d'objectif et autre methode propre a IA
@@ -63,11 +68,18 @@ class Player():
     def addScore(self, gain):
         self.change = True
         self.score += gain
+        if gain > 0:
+            self.served = True
         
     def setState(self, state):
         self.precState.append(self.state)
         self.state = state
         self.board.setState(self.index, state)
+
+    def update(self):
+        if len(self.freq) > 0:
+            self.precFreq.append(self.freq)
+        self.freq = self.board.giveFreq()
 
 def human_player_input():
     choice = input("direction :")
@@ -137,11 +149,14 @@ class AStarPlayer(Player):
             self.path = AStar(self.state, self.goal, self.board)
             self.step = 1 if len(self.path) > 1 else 0
         else:
-            # Le chemin ne mene plus a l'objectif
-            if self.path[-1] != self.goal:
+            # Si je ne suis plus a l'endroit ou j'etais (reinitialisation de la position)
+            if self.state != self.path[self.step]:
                 self.path = AStar(self.state, self.goal, self.board)
                 self.step = 1 if len(self.path) > 1 else 0
-                
+            # Le chemin ne mene plus a l'objectif
+            elif self.path[-1] != self.goal:
+                self.path = AStar(self.state, self.goal, self.board)
+                self.step = 1 if len(self.path) > 1 else 0
             #Si le chemin est bloqué
             elif not self.board.isAccessible(self.path[self.step]):
                 self.path = AStar(self.state, self.goal, self.board)
@@ -164,4 +179,4 @@ class AStarPlayer(Player):
         return self.path[self.step]
             
     def toString(self):
-        return "A* Player %0d"%self.id
+        return "A* Player %0d %s"%(self.id, self.strategy.toString())

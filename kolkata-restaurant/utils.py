@@ -14,8 +14,28 @@ def movePlayer(joueur, player, state):
 #-------------------------------
 # CLASS DEFINIT UN PROBLEME
 #-------------------------------
-class Problem():
+
+class IObserver():
+    def update(self):
+        raise NotImplemented("Implementer le notify")
+
+class ISubject():
+    def __init__(self):
+        self.observers = []
+        
+    def register(self, observer):
+        self.observers.append(observer)
+        
+    def unregister(self, observer):
+        self.observers.remove(observer)
+
+    def notify(self):
+        for observer in self.observers:
+            observer.update()
+
+class Problem(ISubject):
     def __init__(self, shape, constraint):
+        super().__init__()
         self.shape = shape
         self.dim = len(shape)
         # un array indiquant accessibilite de chaque etat possible
@@ -139,8 +159,13 @@ class RestaurantBoard(Board):
         for player in players:
             indexResto = self.playerWaitingIn[player.index]
             gain = self.restaurantGain[indexResto] if player.index in indexPlayersGain else 0
+            # donne le score et alerte le joueur du changement
             player.addScore(gain)
-
+        # on alerte les joueurs que les score sont donne
+        self.notify()
+        
+    def giveFreq(self):
+        return {i:len(l) for i,l in self.isWaiting.items()}
 #-------------------------------
 # CLASS & METHODE pour IA
 #-------------------------------
@@ -231,18 +256,61 @@ class RandomChooserRestaurant(IStrategy):
     """Choisi aleatoirement le restaurant
     """
     def chooseRestaurant(player, restaurantBoard):
+        player.served = False
         goal = rd.choice(restaurantBoard.goalStates)
         player.goal = goal
         restaurantBoard.setPlayerGoal(player.index, goal)
+    def toString():
+        return "Random"
 
-class StubornChooserRestaurant(IStrategy):
+class StubbornChooserRestaurant(IStrategy):
     """Pour le meme joueur choisi le meme restaurant
     """
     def chooseRestaurant(player, restaurantBoard):
-        goal = player.index % len(restaurantBoard.goalStates)
+        player.served = False
+        goal = restaurantBoard.goalStates[player.index % len(restaurantBoard.goalStates)]
         player.goal = goal
         restaurantBoard.setPlayerGoal(player.index, goal)
+    def toString():
+        return "Stubborn"
 
+class LessCrowedChooserRestaurant(IStrategy):
+    def chooseRestaurant(player, restaurantBoard):
+        player.served = False
+        if len(player.freq) > 0:
+            i_min, v_min = None, None 
+            for i,v in player.freq.items():
+                if v_min == None:
+                    i_min, v_min = i,v
+                elif v < v_min:
+                    i_min, v_min = i,v
+            goal = restaurantBoard.goalStates[i_min]
+            player.goal = goal
+            restaurantBoard.setPlayerGoal(player.index, goal)
+        else:
+            RandomChooserRestaurant.chooseRestaurant(player, restaurantBoard)
+    def toString():
+        return "LessCrowed"
+
+class LessCrowedMoyChooserRestaurant(IStrategy):
+    def chooseRestaurant(player, restaurantBoard):
+        player_served = False
+        if len(player.precFreq) > 1:
+            resto = [k for k in player.freq.keys()]
+            # Recolte la moyenne de frequentation des resto
+            fmoy = []
+            for r in resto:
+                f = [freq[r] for freq in player.precFreq] + [player.freq[r]]
+                fmoy.append(sum(f)/len(f))
+            # Recherche le minimum, le restaurant à la plus basse frequentation
+            r_min = resto[fmoy.index(min(fmoy))]
+            goal = restaurantBoard.goalStates[r_min]
+            player.goal = goal
+            restaurantBoard.setPlayerGoal(player.index, goal)
+        else:
+            LessCrowedChooserRestaurant.chooseRestaurant(player, restaurantBoard)
+    def toString():
+        return "LessCrowedMoy"
 #-------------------------------
 # CUSTOM EXCEPTION
 #-------------------------------
